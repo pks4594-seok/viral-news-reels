@@ -133,8 +133,10 @@ class _Header extends StatelessWidget {
               const SizedBox(width: 9),
               Expanded(
                 child: StatTile(
-                  label: '누적 조회',
-                  value: NewsArticle.formatCount(views),
+                  label: '실제 조회',
+                  value: views > 0
+                      ? NewsArticle.formatCount(views)
+                      : '집계 없음',
                   icon: Icons.visibility_rounded,
                   color: AppColors.neonCyan,
                 ),
@@ -477,17 +479,18 @@ class _TaskCard extends StatelessWidget {
                 else
                   Expanded(
                     child: GhostButton(
-                      label: '발행 링크 복사',
-                      icon: Icons.link_rounded,
+                      label: '발행 내용 복사',
+                      icon: Icons.copy_rounded,
                       color: AppColors.neonLime,
                       expanded: true,
                       onPressed: () {
                         Clipboard.setData(ClipboardData(
-                            text:
-                                'https://${task.platform.short.toLowerCase()}.example.com/${task.id}'));
+                            text: '${task.platformTitle}\n\n'
+                                '${task.platformDescription}'));
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                              content: Text('발행 링크를 복사했습니다')),
+                              content: Text(
+                                  '제목과 설명을 복사했습니다 — 플랫폼에 직접 붙여넣어 사용하실 수 있습니다')),
                         );
                       },
                     ),

@@ -55,26 +55,14 @@ class AppState extends ChangeNotifier {
   List<Map<String, dynamic>> get hookInsights => _learning.hookInsights();
 
   // ── 플랫폼 계정 ──────────────────────────────────────
+  //
+  // 초기 상태는 전부 미연동입니다. 사용자가 직접 API 자격증명을 등록하고
+  // OAuth 인증을 완료해야 connected=true가 됩니다.
+  // 발행 건수·조회수는 이 앱에서 실제 발행한 결과만 누적됩니다.
   List<PlatformAccount> _accounts = const [
-    PlatformAccount(
-      platform: UploadPlatform.youtube,
-      displayName: '@trendreel_kr',
-      connected: true,
-      publishedCount: 42,
-      totalViews: 3840000,
-    ),
-    PlatformAccount(
-      platform: UploadPlatform.tiktok,
-      displayName: '@trendreel',
-      connected: true,
-      publishedCount: 58,
-      totalViews: 6120000,
-    ),
-    PlatformAccount(
-      platform: UploadPlatform.blog,
-      displayName: 'trendreel.blog',
-      connected: false,
-    ),
+    PlatformAccount(platform: UploadPlatform.youtube),
+    PlatformAccount(platform: UploadPlatform.tiktok),
+    PlatformAccount(platform: UploadPlatform.blog),
   ];
   List<PlatformAccount> get accounts => _accounts;
 
@@ -266,11 +254,24 @@ class AppState extends ChangeNotifier {
       ),
     );
 
+    // 1단계 검증: API 자격증명 등록 여부
+    if (!account.hasCredentials) {
+      _uploads[idx] = _uploads[idx].copyWith(
+        status: UploadStatus.failed,
+        errorMessage: '${account.platform.label} API 자격증명이 없습니다.\n'
+            '내정보 탭 → 해당 플랫폼 → "API 키 등록"에서 '
+            'Client ID와 Secret을 입력해 주세요.',
+      );
+      notifyListeners();
+      return;
+    }
+
+    // 2단계 검증: OAuth 인증 완료 여부
     if (!account.connected) {
       _uploads[idx] = _uploads[idx].copyWith(
         status: UploadStatus.failed,
-        errorMessage: '${account.platform.label} 계정이 연동되지 않았습니다. '
-            '내정보 탭에서 계정을 연동해 주세요.',
+        errorMessage: '${account.platform.label} 계정 인증이 필요합니다.\n'
+            '내정보 탭에서 "인증하기"를 눌러 로그인해 주세요.',
       );
       notifyListeners();
       return;
@@ -294,24 +295,38 @@ class AppState extends ChangeNotifier {
     idx = _uploads.indexWhere((u) => u.id == taskId);
     if (idx < 0) return;
 
-    final reel = reelById(_uploads[idx].reelId);
-    final views = reel != null ? (reel.predictedViews * 0.72).round() : 0;
-
+    // 실제 조회수는 발행 후 플랫폼 Analytics API로 조회해야 합니다.
+    // 임의의 추정치를 실적처럼 표시하지 않고 0으로 두며,
+    // refreshAnalytics()가 실제 값을 채우는 구조입니다.
     _uploads[idx] = _uploads[idx].copyWith(
       status: UploadStatus.published,
       progress: 1.0,
-      actualViews: views,
     );
 
-    // 계정 통계 반영
+    // 발행 건수만 누적 (실제 발행 1건 = +1)
+    final platform = _uploads[idx].platform;
     _accounts = _accounts.map((a) {
-      if (a.platform != _uploads[idx].platform) return a;
-      return a.copyWith(
-        publishedCount: a.publishedCount + 1,
-        totalViews: a.totalViews + views,
-      );
+      if (a.platform != platform) return a;
+      return a.copyWith(publishedCount: a.publishedCount + 1);
     }).toList();
 
+    notifyListeners();
+  }
+
+  /// 발행된 콘텐츠의 실제 조회수 갱신
+  ///
+  /// 실 연동 시 각 플랫폼 Analytics API를 호출합니다:
+  ///   YouTube — YouTube Analytics API v2 (reports.query)
+  ///   TikTok  — Display API (video.list → view_count)
+  ///   Blog    — 플랫폼별 통계 API
+  ///
+  /// 자격증명이 없으면 조회하지 않고 0을 유지합니다.
+  Future<void> refreshAnalytics() async {
+    final connected = _accounts.where((a) => a.canPublish).toList();
+    if (connected.isEmpty) return;
+
+    // 구현 지점: 여기서 플랫폼 Analytics API를 호출하여
+    // _uploads의 actualViews와 _accounts의 totalViews를 갱신합니다.
     notifyListeners();
   }
 
@@ -433,10 +448,61 @@ class AppState extends ChangeNotifier {
   // 계정 / 설정
   // ══════════════════════════════════════════════════════
 
-  void toggleAccount(UploadPlatform platform) {
+  /// API 자격증명 등록 (Client ID / Secret)
+  ///
+  /// 실제 저장 시에는 flutter_secure_storage 등 암호화 저장소를 사용해야
+  /// 합니다. 현재는 메모리에만 보관하며 앱 재시작 시 초기화됩니다.
+  void registerCredentials(UploadPlatform platform) {
     _accounts = _accounts.map((a) {
       if (a.platform != platform) return a;
-      return a.copyWith(connected: !a.connected);
+      return a.copyWith(hasCredentials: true);
+    }).toList();
+    notifyListeners();
+  }
+
+  /// OAuth 인증 진행 중인 플랫폼
+  UploadPlatform? _authenticating;
+  UploadPlatform? get authenticating => _authenticating;
+
+  /// OAuth 인증 실행
+  ///
+  /// 실 연동 흐름:
+  ///   1. 플랫폼 인증 URL을 시스템 브라우저로 열기 (url_launcher)
+  ///   2. 사용자가 로그인 + 권한 동의
+  ///   3. 리다이렉트 URI로 authorization code 수신 (app_links)
+  ///   4. code → access token 교환 (POST /oauth/token)
+  ///   5. 토큰으로 계정 정보 조회 → displayName 확보
+  ///   6. refresh token을 flutter_secure_storage에 암호화 저장
+  ///
+  /// 자격증명이 없으면 인증을 시작하지 않습니다.
+  Future<String?> authenticate(UploadPlatform platform) async {
+    final idx = _accounts.indexWhere((a) => a.platform == platform);
+    if (idx < 0) return '계정 정보를 찾을 수 없습니다.';
+
+    if (!_accounts[idx].hasCredentials) {
+      return '${platform.label} API 자격증명을 먼저 등록해 주세요.';
+    }
+
+    _authenticating = platform;
+    notifyListeners();
+
+    // 구현 지점: 위 1~5단계의 실제 OAuth 왕복
+    await Future<void>.delayed(const Duration(milliseconds: 700));
+
+    _authenticating = null;
+
+    // 실제 토큰 교환이 구현되지 않았으므로 연동 상태를 바꾸지 않고
+    // 정직하게 실패를 반환합니다.
+    notifyListeners();
+    return 'OAuth 토큰 교환이 아직 구현되지 않았습니다.\n'
+        '${platform.label} 실연동을 진행하려면 알려 주세요.';
+  }
+
+  /// 계정 연동 해제 — 저장된 토큰과 계정명을 폐기
+  void disconnectAccount(UploadPlatform platform) {
+    _accounts = _accounts.map((a) {
+      if (a.platform != platform) return a;
+      return a.copyWith(connected: false, clearDisplayName: true);
     }).toList();
     notifyListeners();
   }

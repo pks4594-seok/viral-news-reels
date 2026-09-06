@@ -22,19 +22,35 @@ enum UploadStatus {
 }
 
 /// 플랫폼 연동 계정
+///
+/// [connected]는 사용자가 실제로 OAuth 인증을 마쳤을 때만 true가 됩니다.
+/// 임의의 초기값이나 더미 통계를 넣지 않습니다 — 모든 수치는
+/// 이 앱에서 실제로 발행한 결과만 누적됩니다.
 class PlatformAccount {
   final UploadPlatform platform;
-  final String displayName;
+
+  /// OAuth 인증 후 플랫폼에서 받아온 계정명. 미연동 시 null.
+  final String? displayName;
+
+  /// OAuth 인증 완료 여부
   final bool connected;
+
+  /// 이 앱을 통해 발행한 건수 (실제 발행만 카운트)
   final int publishedCount;
+
+  /// 이 앱을 통해 발행한 콘텐츠의 조회수 합계
   final int totalViews;
+
+  /// API 자격증명 등록 여부 (Client ID / Secret)
+  final bool hasCredentials;
 
   const PlatformAccount({
     required this.platform,
-    required this.displayName,
-    required this.connected,
+    this.displayName,
+    this.connected = false,
     this.publishedCount = 0,
     this.totalViews = 0,
+    this.hasCredentials = false,
   });
 
   PlatformAccount copyWith({
@@ -42,14 +58,48 @@ class PlatformAccount {
     String? displayName,
     int? publishedCount,
     int? totalViews,
+    bool? hasCredentials,
+    bool clearDisplayName = false,
   }) =>
       PlatformAccount(
         platform: platform,
-        displayName: displayName ?? this.displayName,
+        displayName:
+            clearDisplayName ? null : (displayName ?? this.displayName),
         connected: connected ?? this.connected,
         publishedCount: publishedCount ?? this.publishedCount,
         totalViews: totalViews ?? this.totalViews,
+        hasCredentials: hasCredentials ?? this.hasCredentials,
       );
+
+  /// 발행 가능 여부 — 자격증명 등록 + 인증 완료 둘 다 필요
+  bool get canPublish => hasCredentials && connected;
+
+  /// OAuth 인증에 필요한 개발자 콘솔 안내
+  String get credentialGuide {
+    switch (platform) {
+      case UploadPlatform.youtube:
+        return 'Google Cloud Console → YouTube Data API v3 활성화 → '
+            'OAuth 2.0 클라이언트 ID 발급';
+      case UploadPlatform.tiktok:
+        return 'TikTok for Developers → 앱 생성 → '
+            'Content Posting API 권한 신청';
+      case UploadPlatform.blog:
+        return '워드프레스 애플리케이션 비밀번호 또는 '
+            '티스토리 Open API 앱 등록';
+    }
+  }
+
+  /// 필요한 권한 범위
+  List<String> get requiredScopes {
+    switch (platform) {
+      case UploadPlatform.youtube:
+        return ['youtube.upload', 'youtube.readonly'];
+      case UploadPlatform.tiktok:
+        return ['video.publish', 'user.info.basic'];
+      case UploadPlatform.blog:
+        return ['posts.write'];
+    }
+  }
 }
 
 /// 업로드 작업 (릴스 1개 × 플랫폼 1개)

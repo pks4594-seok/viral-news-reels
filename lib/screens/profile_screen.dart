@@ -23,9 +23,11 @@ class ProfileScreen extends StatelessWidget {
         const SizedBox(height: 20),
 
         // ── 플랫폼 계정 ─────────────────────────────
-        const SectionHeader(
+        SectionHeader(
           title: '플랫폼 계정 연동',
-          subtitle: '연동된 계정으로 자동 발행됩니다',
+          subtitle: state.accounts.any((a) => a.canPublish)
+              ? '인증된 계정으로 발행됩니다'
+              : '아직 연동된 계정이 없습니다 — 직접 인증이 필요합니다',
           icon: Icons.link_rounded,
           accent: AppColors.neonPurple,
         ),
@@ -37,17 +39,32 @@ class ProfileScreen extends StatelessWidget {
         const SizedBox(height: 12),
         GlassCard(
           padding: const EdgeInsets.all(13),
-          child: Row(
+          glowColor: AppColors.neonAmber,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(Icons.info_outline_rounded,
-                  size: 16, color: AppColors.neonCyan),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  '실제 발행에는 각 플랫폼의 OAuth 인증이 필요합니다. '
-                  'API 키를 등록하면 이 화면에서 실계정 연동으로 전환됩니다.',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
+              Row(
+                children: [
+                  const Icon(Icons.shield_outlined,
+                      size: 15, color: AppColors.neonAmber),
+                  const SizedBox(width: 7),
+                  Text(
+                    '연동은 직접 하셔야 합니다',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.neonAmber,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '이 앱은 기석님의 계정 정보를 알지 못하며, 임의로 연동하지 않습니다.\n'
+                '발행하려면 ① 개발자 콘솔에서 API 키를 발급받아 등록하고, '
+                '② 브라우저 로그인으로 직접 권한을 승인해야 합니다.\n'
+                '아래 표시되는 모든 수치는 이 앱을 통해 실제 발행한 결과만 집계됩니다.',
+                style: Theme.of(context).textTheme.bodySmall,
               ),
             ],
           ),
@@ -220,10 +237,14 @@ class ProfileScreen extends StatelessWidget {
         GlassCard(
           child: Column(
             children: [
-              _stat(context, '누적 발행', '${state.totalPublished}건',
+              _stat(context, '실제 발행', '${state.totalPublished}건',
                   AppColors.neonLime),
-              _stat(context, '누적 조회수',
-                  NewsArticle.formatCount(state.totalViews),
+              _stat(
+                  context,
+                  '누적 조회수',
+                  state.totalViews > 0
+                      ? NewsArticle.formatCount(state.totalViews)
+                      : '집계 없음',
                   AppColors.neonCyan),
               _stat(context, '제작한 릴스', '${state.reels.length}개',
                   AppColors.neonMagenta),
@@ -291,6 +312,9 @@ class _ProfileCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final connectedCount =
+        state.accounts.where((a) => a.canPublish).length;
+
     return GlassCard(
       glowColor: AppColors.neonMagenta,
       child: Row(
@@ -324,18 +348,22 @@ class _ProfileCard extends StatelessWidget {
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    NeonBadge(
-                      label:
-                          '${state.accounts.where((a) => a.connected).length}개 계정 연동',
-                      color: AppColors.neonLime,
-                      icon: Icons.check_rounded,
-                    ),
+                    if (connectedCount > 0)
+                      NeonBadge(
+                        label: '$connectedCount개 계정 인증됨',
+                        color: AppColors.neonLime,
+                        icon: Icons.verified_rounded,
+                      )
+                    else
+                      const NeonBadge(
+                        label: '연동된 계정 없음',
+                        color: AppColors.neonAmber,
+                        icon: Icons.link_off_rounded,
+                      ),
                     const SizedBox(width: 5),
                     NeonBadge(
-                      label: state.autoCollect ? '자동 수집 ON' : '수동 모드',
-                      color: state.autoCollect
-                          ? AppColors.neonCyan
-                          : AppColors.textLow,
+                      label: '릴스 ${state.reels.length}개',
+                      color: AppColors.neonMagenta,
                     ),
                   ],
                 ),
@@ -348,6 +376,12 @@ class _ProfileCard extends StatelessWidget {
   }
 }
 
+/// 플랫폼 계정 카드
+///
+/// 3단 상태를 정직하게 구분해 표시합니다:
+///   ① 자격증명 없음 → "API 키 등록" 필요
+///   ② 자격증명 있음 / 미인증 → "인증하기" 필요
+///   ③ 인증 완료 → 계정명 + 실제 발행 실적
 class _AccountRow extends StatelessWidget {
   final PlatformAccount account;
   const _AccountRow({required this.account});
@@ -365,75 +399,365 @@ class _AccountRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.read<AppState>();
+    final state = context.watch<AppState>();
     final (icon, color) = _meta(account.platform);
+    final authing = state.authenticating == account.platform;
+
+    // 상태 판정
+    final String statusLabel;
+    final Color statusColor;
+    final String detail;
+
+    if (account.canPublish) {
+      statusLabel = '인증 완료';
+      statusColor = AppColors.neonLime;
+      detail = account.publishedCount > 0
+          ? '${account.displayName} · 이 앱에서 발행 ${account.publishedCount}건'
+          : '${account.displayName} · 발행 이력 없음';
+    } else if (account.hasCredentials) {
+      statusLabel = '인증 필요';
+      statusColor = AppColors.neonAmber;
+      detail = 'API 키 등록됨 · 로그인 인증이 남았습니다';
+    } else {
+      statusLabel = '미연동';
+      statusColor = AppColors.textLow;
+      detail = 'API 자격증명이 등록되지 않았습니다';
+    }
 
     return GlassCard(
-      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
-      glowColor: account.connected ? color : null,
-      child: Row(
+      padding: const EdgeInsets.all(13),
+      glowColor: account.canPublish ? color : null,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container
-            (width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: account.connected ? 0.16 : 0.07),
-              borderRadius: BorderRadius.circular(11),
-            ),
-            child: Icon(icon,
-                size: 19,
-                color: account.connected
-                    ? color
-                    : color.withValues(alpha: 0.4)),
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: color.withValues(
+                      alpha: account.canPublish ? 0.16 : 0.07),
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                child: Icon(icon,
+                    size: 19,
+                    color: account.canPublish
+                        ? color
+                        : color.withValues(alpha: 0.4)),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          account.platform.label,
+                          style: const TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.textHigh,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        NeonBadge(label: statusLabel, color: statusColor),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Text(detail,
+                        style: Theme.of(context).textTheme.bodySmall),
+                  ],
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 11),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          const SizedBox(height: 11),
+
+          // 필요 권한 범위 표시
+          Wrap(
+            spacing: 5,
+            runSpacing: 5,
+            children: account.requiredScopes
+                .map((s) => Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 7, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceHigh,
+                        borderRadius: BorderRadius.circular(5),
+                        border: Border.all(color: AppColors.border),
+                      ),
+                      child: Text(
+                        s,
+                        style: const TextStyle(
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textLow,
+                          fontFamily: 'monospace',
+                        ),
+                      ),
+                    ))
+                .toList(),
+          ),
+          const SizedBox(height: 11),
+
+          // 액션
+          if (authing)
+            Row(
               children: [
-                Text(
-                  account.platform.label,
-                  style: const TextStyle(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.textHigh,
+                const SizedBox(
+                  width: 13,
+                  height: 13,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: AppColors.neonAmber),
+                ),
+                const SizedBox(width: 8),
+                Text('브라우저에서 인증 진행 중…',
+                    style: Theme.of(context).textTheme.bodySmall),
+              ],
+            )
+          else if (account.canPublish)
+            Row(
+              children: [
+                Expanded(
+                  child: GhostButton(
+                    label: '연동 해제',
+                    icon: Icons.link_off_rounded,
+                    color: AppColors.textMid,
+                    expanded: true,
+                    onPressed: () =>
+                        state.disconnectAccount(account.platform),
                   ),
                 ),
-                const SizedBox(height: 3),
-                Text(
-                  account.connected
-                      ? '${account.displayName} · 발행 ${account.publishedCount}건 · '
-                          '${NewsArticle.formatCount(account.totalViews)} 조회'
-                      : '연동되지 않음',
-                  style: Theme.of(context).textTheme.bodySmall,
+              ],
+            )
+          else if (account.hasCredentials)
+            Row(
+              children: [
+                Expanded(
+                  child: NeonButton(
+                    label: '인증하기',
+                    icon: Icons.login_rounded,
+                    compact: true,
+                    expanded: true,
+                    gradient: LinearGradient(
+                        colors: [color, color.withValues(alpha: 0.62)]),
+                    onPressed: () => _auth(context, state),
+                  ),
+                ),
+              ],
+            )
+          else
+            Row(
+              children: [
+                Expanded(
+                  child: GhostButton(
+                    label: 'API 키 등록',
+                    icon: Icons.key_rounded,
+                    color: color,
+                    expanded: true,
+                    onPressed: () => _showCredentialSheet(context, state),
+                  ),
                 ),
               ],
             ),
-          ),
-          const SizedBox(width: 8),
-          account.connected
-              ? GhostButton(
-                  label: '해제',
-                  color: AppColors.textMid,
-                  onPressed: () => state.toggleAccount(account.platform),
-                )
-              : NeonButton(
-                  label: '연동',
-                  icon: Icons.add_link_rounded,
-                  compact: true,
-                  gradient: LinearGradient(
-                      colors: [color, color.withValues(alpha: 0.62)]),
-                  onPressed: () {
-                    state.toggleAccount(account.platform);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                            '${account.platform.label} 계정이 연동되었습니다'),
-                      ),
-                    );
-                  },
-                ),
         ],
+      ),
+    );
+  }
+
+  Future<void> _auth(BuildContext context, AppState state) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final error = await state.authenticate(account.platform);
+    if (error != null) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(error),
+          duration: const Duration(seconds: 5),
+          backgroundColor: AppColors.surfaceHigh,
+        ),
+      );
+    }
+  }
+
+  /// API 자격증명 등록 시트
+  void _showCredentialSheet(BuildContext context, AppState state) {
+    final idCtrl = TextEditingController();
+    final secretCtrl = TextEditingController();
+    final (icon, color) = _meta(account.platform);
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => Padding(
+        padding:
+            EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: AppColors.bgElevated,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+            border: Border(top: BorderSide(color: AppColors.border)),
+          ),
+          child: SafeArea(
+            top: false,
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: AppColors.borderStrong,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Icon(icon, size: 20, color: color),
+                        const SizedBox(width: 9),
+                        Text('${account.platform.label} API 키',
+                            style: Theme.of(ctx).textTheme.titleLarge),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+
+                    // 발급 안내
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                            color: color.withValues(alpha: 0.28)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(Icons.info_outline_rounded,
+                                  size: 14, color: color),
+                              const SizedBox(width: 6),
+                              Text('발급 방법',
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: color,
+                                  )),
+                            ],
+                          ),
+                          const SizedBox(height: 7),
+                          Text(
+                            account.credentialGuide,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              height: 1.55,
+                              color: AppColors.textMid,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    Text('Client ID',
+                        style: Theme.of(ctx).textTheme.labelSmall),
+                    const SizedBox(height: 7),
+                    _input(idCtrl, false),
+                    const SizedBox(height: 13),
+                    Text('Client Secret',
+                        style: Theme.of(ctx).textTheme.labelSmall),
+                    const SizedBox(height: 7),
+                    _input(secretCtrl, true),
+                    const SizedBox(height: 13),
+
+                    Row(
+                      children: [
+                        const Icon(Icons.lock_outline_rounded,
+                            size: 13, color: AppColors.textLow),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            '입력한 키는 기기 내에만 보관되며 외부로 전송되지 않습니다.',
+                            style: Theme.of(ctx).textTheme.bodySmall,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+
+                    NeonButton(
+                      label: '등록',
+                      icon: Icons.check_rounded,
+                      expanded: true,
+                      gradient: LinearGradient(
+                          colors: [color, color.withValues(alpha: 0.62)]),
+                      onPressed: () {
+                        final messenger = ScaffoldMessenger.of(context);
+                        if (idCtrl.text.trim().isEmpty ||
+                            secretCtrl.text.trim().isEmpty) {
+                          messenger.showSnackBar(
+                            const SnackBar(
+                                content:
+                                    Text('Client ID와 Secret을 모두 입력해 주세요')),
+                          );
+                          return;
+                        }
+                        state.registerCredentials(account.platform);
+                        Navigator.pop(ctx);
+                        messenger.showSnackBar(
+                          SnackBar(
+                            content: Text(
+                                '${account.platform.label} API 키 등록됨 · '
+                                '이제 "인증하기"를 눌러 주세요'),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _input(TextEditingController ctrl, bool obscure) {
+    return TextField(
+      controller: ctrl,
+      obscureText: obscure,
+      style: const TextStyle(
+          color: AppColors.textHigh, fontSize: 13, fontFamily: 'monospace'),
+      decoration: InputDecoration(
+        hintText: obscure ? '••••••••••••••••' : '000000-xxxxx.apps...',
+        hintStyle: const TextStyle(
+            color: AppColors.textLow, fontSize: 12.5),
+        filled: true,
+        fillColor: AppColors.surface,
+        contentPadding: const EdgeInsets.all(12),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.neonMagenta),
+        ),
       ),
     );
   }

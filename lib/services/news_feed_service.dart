@@ -216,7 +216,9 @@ class NewsFeedService {
         summary: summary,
         body: body,
         source: source,
-        sourceUrl: 'https://news.example.com/article/$idx',
+        // 실제 RSS 연동 시 <link> 항목의 원문 URL이 들어갑니다.
+        // 시드 데이터에는 실제 기사 URL이 없으므로 비워 둡니다.
+        sourceUrl: '',
         category: category,
         imageUrl: imageFor(category, idx),
         publishedAt: now.subtract(Duration(minutes: minutesAgo)),

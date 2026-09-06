@@ -26,6 +26,7 @@ class NewsScreen extends StatelessWidget {
         slivers: [
           SliverToBoxAdapter(child: _Header(state: state)),
           SliverToBoxAdapter(child: _CategoryChips(state: state)),
+          const SliverToBoxAdapter(child: _SeedDataNotice()),
           if (state.newsError != null)
             SliverToBoxAdapter(child: _ErrorBanner(state: state)),
           if (state.loadingNews && articles.isEmpty)
@@ -250,6 +251,39 @@ class _CategoryChips extends StatelessWidget {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// 시드 데이터 안내
+///
+/// 현재 표시되는 뉴스는 실제 RSS 수집 결과가 아니라, 동일한 파이프라인을
+/// 통과하는 샘플 데이터입니다. 사용자가 오해하지 않도록 명시합니다.
+class _SeedDataNotice extends StatelessWidget {
+  const _SeedDataNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+      child: GlassCard(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        glowColor: AppColors.neonAmber,
+        child: Row(
+          children: [
+            const Icon(Icons.science_outlined,
+                size: 15, color: AppColors.neonAmber),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Text(
+                '샘플 뉴스입니다. 실제 RSS 수집은 아직 연결되지 않았으며, '
+                '트렌드 점수·릴스 생성 로직은 실제 알고리즘으로 동작합니다.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -635,8 +669,8 @@ class _NewsCard extends StatelessWidget {
                       ),
                       const SizedBox(width: 8),
                       GhostButton(
-                        label: '원문',
-                        icon: Icons.open_in_new_rounded,
+                        label: '상세',
+                        icon: Icons.article_outlined,
                         onPressed: () => _showSource(context),
                       ),
                     ],
