@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/news_article.dart';
 import '../state/app_state.dart';
@@ -26,7 +27,7 @@ class NewsScreen extends StatelessWidget {
         slivers: [
           SliverToBoxAdapter(child: _Header(state: state)),
           SliverToBoxAdapter(child: _CategoryChips(state: state)),
-          const SliverToBoxAdapter(child: _SeedDataNotice()),
+          SliverToBoxAdapter(child: _SourceStatusBanner(state: state)),
           if (state.newsError != null)
             SliverToBoxAdapter(child: _ErrorBanner(state: state)),
           if (state.loadingNews && articles.isEmpty)
@@ -256,33 +257,164 @@ class _CategoryChips extends StatelessWidget {
   }
 }
 
-/// 시드 데이터 안내
+/// 수집 소스 상태 배너
 ///
-/// 현재 표시되는 뉴스는 실제 RSS 수집 결과가 아니라, 동일한 파이프라인을
-/// 통과하는 샘플 데이터입니다. 사용자가 오해하지 않도록 명시합니다.
-class _SeedDataNotice extends StatelessWidget {
-  const _SeedDataNotice();
+/// 어느 언론사에서 실제로 몇 건을 수집했는지, 실패한 소스는 무엇인지
+/// 투명하게 보여줍니다. 웹에서 프록시를 경유했다면 그것도 밝힙니다.
+class _SourceStatusBanner extends StatelessWidget {
+  final AppState state;
+  const _SourceStatusBanner({required this.state});
 
   @override
   Widget build(BuildContext context) {
+    if (!state.hasLiveData && !state.loadingNews) {
+      return const SizedBox.shrink();
+    }
+
+    final ok = state.succeededSources.length;
+    final fail = state.failedSources.length;
+    final realImages =
+        state.articles.where((a) => a.hasRealImage).length;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
       child: GlassCard(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        glowColor: AppColors.neonAmber,
+        glowColor: AppColors.neonLime,
+        onTap: fail > 0 ? () => _showDetail(context) : null,
         child: Row(
           children: [
-            const Icon(Icons.science_outlined,
-                size: 15, color: AppColors.neonAmber),
+            Container(
+              padding: const EdgeInsets.all(5),
+              decoration: BoxDecoration(
+                color: AppColors.neonLime.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(7),
+              ),
+              child: const Icon(Icons.rss_feed_rounded,
+                  size: 13, color: AppColors.neonLime),
+            ),
             const SizedBox(width: 9),
             Expanded(
-              child: Text(
-                '샘플 뉴스입니다. 실제 RSS 수집은 아직 연결되지 않았으며, '
-                '트렌드 점수·릴스 생성 로직은 실제 알고리즘으로 동작합니다.',
-                style: Theme.of(context).textTheme.bodySmall,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Text(
+                        '실시간 RSS 수집',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.neonLime,
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      if (state.usedProxy)
+                        const NeonBadge(
+                          label: '프록시 경유',
+                          color: AppColors.neonAmber,
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    '$ok개 언론사 · 기사 ${state.articles.length}건 · '
+                    '실사진 $realImages장'
+                    '${fail > 0 ? ' · 실패 $fail개' : ''}',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
               ),
             ),
+            if (fail > 0)
+              const Icon(Icons.chevron_right_rounded,
+                  size: 17, color: AppColors.textLow),
           ],
+        ),
+      ),
+    );
+  }
+
+  void _showDetail(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(
+          color: AppColors.bgElevated,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+          border: Border(top: BorderSide(color: AppColors.border)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppColors.borderStrong,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text('수집 결과 상세',
+                    style: Theme.of(ctx).textTheme.titleLarge),
+                const SizedBox(height: 14),
+                if (state.succeededSources.isNotEmpty) ...[
+                  Text('성공 (${state.succeededSources.length})',
+                      style: Theme.of(ctx).textTheme.labelSmall),
+                  const SizedBox(height: 7),
+                  Wrap(
+                    spacing: 5,
+                    runSpacing: 5,
+                    children: state.succeededSources
+                        .map((s) => NeonBadge(
+                            label: s, color: AppColors.neonLime))
+                        .toList(),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                if (state.failedSources.isNotEmpty) ...[
+                  Text('실패 (${state.failedSources.length})',
+                      style: Theme.of(ctx).textTheme.labelSmall),
+                  const SizedBox(height: 7),
+                  ...state.failedSources.map((f) => Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.error_outline_rounded,
+                                size: 13, color: AppColors.neonRed),
+                            const SizedBox(width: 7),
+                            Expanded(
+                              child: Text(
+                                '${f.name} — ${f.reason}',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.textMid,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )),
+                  const SizedBox(height: 13),
+                  Text(
+                    '웹 브라우저는 CORS 정책으로 외부 피드 직접 호출이 '
+                    '차단됩니다. 안드로이드 앱에서는 모든 소스가 직접 '
+                    '수집됩니다.',
+                    style: Theme.of(ctx).textTheme.bodySmall,
+                  ),
+                ],
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -788,6 +920,25 @@ class _NewsCard extends StatelessWidget {
                         ],
                       ),
                     ),
+                    if (article.hasSourceLink) ...[
+                      const SizedBox(height: 16),
+                      NeonButton(
+                        label: '${article.source} 원문 열기',
+                        icon: Icons.open_in_new_rounded,
+                        expanded: true,
+                        gradient: AppColors.cyanGradient,
+                        onPressed: () => _openSource(ctx),
+                      ),
+                      const SizedBox(height: 7),
+                      Center(
+                        child: Text(
+                          article.sourceUrl,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(ctx).textTheme.bodySmall,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -796,6 +947,20 @@ class _NewsCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// 원문 기사 열기 — 시스템 브라우저 (안드로이드: Intent.ACTION_VIEW)
+  Future<void> _openSource(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final uri = Uri.tryParse(article.sourceUrl);
+    if (uri == null) return;
+
+    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('브라우저를 열 수 없습니다')),
+      );
+    }
   }
 
   Widget _metric(String k, String v) => Padding(

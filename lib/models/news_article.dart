@@ -25,6 +25,9 @@ class NewsArticle {
   /// 이미 릴스로 만들었는지
   final bool reelCreated;
 
+  /// 언로사가 제공한 실제 기사 사진인지 (false면 카테고리 대집 이미지)
+  final bool hasRealImage;
+
   const NewsArticle({
     required this.id,
     required this.title,
@@ -40,6 +43,7 @@ class NewsArticle {
     required this.interestCurve,
     required this.keywords,
     this.reelCreated = false,
+    this.hasRealImage = false,
   });
 
   NewsArticle copyWith({
@@ -62,8 +66,12 @@ class NewsArticle {
       interestCurve: interestCurve,
       keywords: keywords,
       reelCreated: reelCreated ?? this.reelCreated,
+      hasRealImage: hasRealImage,
     );
   }
+
+  /// 원부 기사 링크가 있는지
+  bool get hasSourceLink => sourceUrl.startsWith('http');
 
   /// "12분 전" 형태의 상대 시간
   String get relativeTime {
@@ -146,15 +154,30 @@ class NewsSource {
   final String feedUrl;
   final bool enabled;
 
+  /// 이 피드가 단일 카테고리 전용이면 고정 카테고리.
+  /// null이면 기사 내용으로 자동 분류합니다.
+  final String? category;
+
   const NewsSource({
     required this.name,
     required this.feedUrl,
     this.enabled = true,
+    this.category,
   });
 
   NewsSource copyWith({bool? enabled}) => NewsSource(
         name: name,
         feedUrl: feedUrl,
         enabled: enabled ?? this.enabled,
+        category: category,
       );
+
+  /// 피드 도메인 (표시용)
+  String get domain {
+    try {
+      return Uri.parse(feedUrl).host.replaceFirst('www.', '');
+    } catch (_) {
+      return feedUrl;
+    }
+  }
 }

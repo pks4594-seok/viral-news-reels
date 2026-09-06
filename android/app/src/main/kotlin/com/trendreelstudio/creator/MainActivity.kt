@@ -1,4 +1,4 @@
-package com.trendreelstudio.trend_reel_studio
+package com.trendreelstudio.creator
 
 import io.flutter.embedding.android.FlutterActivity
 

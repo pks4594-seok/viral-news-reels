@@ -23,11 +23,26 @@ class AppState extends ChangeNotifier {
   String _category = NewsCategory.all;
   DateTime? _lastFetched;
 
+  /// 마지막 수집에서 성공한 소스명
+  List<String> _succeededSources = [];
+
+  /// 마지막 수집에서 실패한 소스 (이유 포함)
+  List<({String name, String reason})> _failedSources = [];
+
+  /// 프록시 경유 여부 (웹 환경 표시용)
+  bool _usedProxy = false;
+
   List<NewsArticle> get articles => _articles;
   bool get loadingNews => _loadingNews;
   String? get newsError => _newsError;
   String get category => _category;
   DateTime? get lastFetched => _lastFetched;
+  List<String> get succeededSources => _succeededSources;
+  List<({String name, String reason})> get failedSources => _failedSources;
+  bool get usedProxy => _usedProxy;
+
+  /// 실제 RSS 수집에 성공한 상헜인지
+  bool get hasLiveData => _articles.isNotEmpty && _succeededSources.isNotEmpty;
 
   // ── 뉴스 소스 ────────────────────────────────────────
   List<NewsSource> _sources = List.of(NewsFeedService.defaultSources);
@@ -86,19 +101,40 @@ class AppState extends ChangeNotifier {
   // 뉴스 수집
   // ══════════════════════════════════════════════════════
 
+  /// 실제 RSS 피드 수집
+  ///
+  /// 활성화된 언로사 피드를 병렬로 수집합니다.
+  /// 일부가 실패해도 나머지 결과로 진행하고, 실패 내역을 보관합니다.
   Future<void> refreshNews() async {
     _loadingNews = true;
     _newsError = null;
     notifyListeners();
 
     try {
-      final list = await _news.fetchLatest(sources: _sources);
-      _articles = list;
-      _lastFetched = DateTime.now();
+      final result = await _news.fetchLatest(sources: _sources);
+
+      _succeededSources = result.succeeded;
+      _failedSources = result.failed;
+      _usedProxy = result.usedProxy;
+
+      if (result.hasData) {
+        _articles = result.articles;
+        _lastFetched = DateTime.now();
+      } else {
+        // 모든 소스 실패 — 사직에게 이유를 알립니다.
+        final reasons = result.failed.isEmpty
+            ? '활성화된 뉴스 소스가 없습니다.'
+            : result.failed
+                .take(3)
+                .map((f) => '${f.name}: ${f.reason}')
+                .join('\n');
+        _newsError = '뉴스 수집에 실패했습니다.\n$reasons';
+      }
+
       _loadingNews = false;
       notifyListeners();
     } catch (e) {
-      _newsError = '뉴스 수집에 실패했습니다. 네트워크를 확인해 주세요.';
+      _newsError = '수집 중 오류가 발생했습니다: $e';
       _loadingNews = false;
       notifyListeners();
     }
