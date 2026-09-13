@@ -57,32 +57,38 @@ class RssParser {
   RssParser._();
   static final RssParser instance = RssParser._();
 
-  static const Duration _timeout = Duration(seconds: 12);
+  static const Duration _timeout = Duration(seconds: 15);
 
-  /// 웹 전용 CORS 프록시 후보 (순차 폴백)
-  static const List<({String name, String Function(String) build})> _proxies = [
-    (
-      name: 'allorigins',
-      build: _allOrigins,
-    ),
-    (
-      name: 'codetabs',
-      build: _codeTabs,
-    ),
-    (
-      name: 'thingproxy',
-      build: _corsProxyIo,
-    ),
-  ];
+  /// 전용 RSS 프록시 주소
+  ///
+  /// 웹 브라우저는 CORS 정책으로 외부 도메인 피드를 직접 호출할 수 없습니다.
+  /// 공개 CORS 프록시는 속도 제한과 차단이 빈번해 신뢰할 수 없으므로,
+  /// 이 앱 전용 프록시를 우선 사용합니다.
+  ///
+  /// 빌드 시 `--dart-define=RSS_PROXY=https://...` 로 주입할 수 있습니다.
+  static const String dedicatedProxy = String.fromEnvironment(
+    'RSS_PROXY',
+    defaultValue:
+        'https://5061-i21gnpc8qtnvjlj4f5ohk-c81df28e.sandbox.novita.ai',
+  );
+
+  /// 웹 전용 프록시 후보 (순차 폴백)
+  ///
+  /// 1순위는 전용 프록시, 실패 시 공개 프록시를 차례로 시도합니다.
+  static List<({String name, String Function(String) build})> get _proxies => [
+        (name: '전용 프록시', build: _dedicated),
+        (name: 'allorigins', build: _allOrigins),
+        (name: 'codetabs', build: _codeTabs),
+      ];
+
+  static String _dedicated(String url) =>
+      '$dedicatedProxy/feed?url=${Uri.encodeComponent(url)}';
 
   static String _allOrigins(String url) =>
       'https://api.allorigins.win/raw?url=${Uri.encodeComponent(url)}';
 
   static String _codeTabs(String url) =>
-      'https://api.codetabs.com/v1/proxy?quest=${Uri.encodeComponent(url)}';
-
-  static String _corsProxyIo(String url) =>
-      'https://corsproxy.io/?${Uri.encodeComponent(url)}';
+      'https://api.codetabs.com/v1/proxy/?quest=${Uri.encodeComponent(url)}';
 
   /// 피드 수집 — 플랫폼에 따라 경로를 자동 선택
   Future<FeedResult> fetch(String sourceName, String feedUrl) async {
@@ -106,21 +112,8 @@ class RssParser {
       }
     }
 
-    // 웹: 직접 시도 → 실패하면 프록시 순차 폴백
-    try {
-      final body = await _get(feedUrl);
-      final items = parse(body);
-      if (items.isNotEmpty) {
-        return FeedResult(
-          items: items,
-          sourceName: sourceName,
-          route: 'direct',
-        );
-      }
-    } catch (_) {
-      // CORS 차단 예상 — 프록시로 진행
-    }
-
+    // 웹: 브라우저 CORS로 직접 호출이 불가하므로 프록시를 순차 시도합니다.
+    // (직접 호출은 반드시 실패하므로 시도하지 않아 대기 시간을 줄입니다.)
     String? lastError;
     for (final proxy in _proxies) {
       try {
@@ -174,11 +167,16 @@ class RssParser {
     final s = e.toString();
     if (s.contains('TimeoutException')) return '응답 시간 초과';
     if (s.contains('XMLHttpRequest') || s.contains('ClientException')) {
-      return 'CORS 차단 (웹 제약)';
+      return '브라우저 CORS 차단 — 프록시 필요';
     }
     if (s.contains('SocketException')) return '네트워크 연결 실패';
-    if (s.contains('HTTP 4')) return '피드 주소 오류';
-    if (s.contains('HTTP 5')) return '언론사 서버 오류';
+    if (s.contains('HTTP 403')) return '프록시 접근 거부';
+    if (s.contains('HTTP 404')) return '피드 주소 없음';
+    if (s.contains('HTTP 429')) return '프록시 요청 한도 초과';
+    if (s.contains('HTTP 4')) return '요청 오류';
+    if (s.contains('HTTP 502')) return '언론사 서버 응답 실패';
+    if (s.contains('HTTP 504')) return '언론사 서버 시간 초과';
+    if (s.contains('HTTP 5')) return '서버 오류';
     return '파싱 실패';
   }
 
