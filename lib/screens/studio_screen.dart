@@ -7,6 +7,7 @@ import '../theme/app_theme.dart';
 import '../widgets/common.dart';
 import '../widgets/platform_picker.dart';
 import 'reel_detail_screen.dart';
+import 'reel_playback_screen.dart';
 
 /// 스튜디오 — 생성된 릴스를 세로형 카드로 관리
 class StudioScreen extends StatelessWidget {
@@ -94,13 +95,27 @@ class _Header extends StatelessWidget {
                   ),
                 ),
               ),
-              if (state.readyReels.isNotEmpty)
+              if (state.readyReels.isNotEmpty) ...[
+                NeonButton(
+                  label: '연속 재생',
+                  icon: Icons.play_arrow_rounded,
+                  compact: true,
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          ReelPlaybackScreen(reels: state.readyReels),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 7),
                 GhostButton(
-                  label: '전체 큐 추가',
+                  label: '큐 추가',
                   icon: Icons.playlist_add_rounded,
                   color: AppColors.neonPurple,
                   onPressed: () => _queueAll(context, state),
                 ),
+              ],
             ],
           ),
           const SizedBox(height: 12),
@@ -169,6 +184,22 @@ class _Header extends StatelessWidget {
 class _ReelCard extends StatelessWidget {
   final ReelProject reel;
   const _ReelCard({required this.reel});
+
+  /// 전체 화면 재생 — 준비된 릴스 목록에서 이 릴스부터 시작
+  void _playFullscreen(BuildContext context, ReelProject r) {
+    final list = context.read<AppState>().readyReels;
+    var idx = list.indexWhere((x) => x.id == r.id);
+    if (idx < 0) idx = 0;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ReelPlaybackScreen(
+          reels: list.isNotEmpty ? list : [r],
+          initialIndex: idx,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -256,21 +287,25 @@ class _ReelCard extends StatelessWidget {
                   ),
                 ),
 
-                // 중앙 재생 버튼
-                Center(
-                  child: Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      gradient: AppColors.brandGradient,
-                      shape: BoxShape.circle,
-                      boxShadow: AppShadows.glow(AppColors.neonMagenta,
-                          blur: 18, opacity: 0.5),
+                // 중앙 재생 버튼 — 전장 재생으로 직행
+                if (reel.isReady)
+                  Center(
+                    child: GestureDetector(
+                      onTap: () => _playFullscreen(context, reel),
+                      child: Container(
+                        width: 46,
+                        height: 46,
+                        decoration: BoxDecoration(
+                          gradient: AppColors.brandGradient,
+                          shape: BoxShape.circle,
+                          boxShadow: AppShadows.glow(AppColors.neonMagenta,
+                              blur: 18, opacity: 0.55),
+                        ),
+                        child: const Icon(Icons.play_arrow_rounded,
+                            color: Colors.white, size: 26),
+                      ),
                     ),
-                    child: const Icon(Icons.play_arrow_rounded,
-                        color: Colors.white, size: 24),
                   ),
-                ),
 
                 // 하단: 후킹 자막 + 파형
                 Positioned(

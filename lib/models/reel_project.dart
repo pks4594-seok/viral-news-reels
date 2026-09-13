@@ -1,14 +1,14 @@
 import 'news_article.dart';
 
 /// 릴스 제작 단계
-enum ReelStage {
+enum ReelBuildStage {
   script('스크립트', 0),
   voice('음성', 1),
   visual('비주얼', 2),
   render('렌더링', 3),
   ready('완료', 4);
 
-  const ReelStage(this.label, this.order);
+  const ReelBuildStage(this.label, this.order);
   final String label;
   final int order;
 }
@@ -86,7 +86,7 @@ class ReelProject {
   final String formulaName;
 
   /// 현재 단계
-  final ReelStage stage;
+  final ReelBuildStage stage;
 
   /// 현재 단계 진행률 0~1
   final double stageProgress;
@@ -132,7 +132,7 @@ class ReelProject {
     String? description,
     List<String>? hashtags,
     List<CaptionLine>? captions,
-    ReelStage? stage,
+    ReelBuildStage? stage,
     double? stageProgress,
     int? predictedViews,
     int? viralScore,
@@ -159,11 +159,11 @@ class ReelProject {
     );
   }
 
-  bool get isReady => stage == ReelStage.ready;
+  bool get isReady => stage == ReelBuildStage.ready;
 
   /// 전체 진행률 (단계 + 단계 내 진행)
   double get overallProgress {
-    final total = ReelStage.values.length - 1;
+    final total = ReelBuildStage.values.length - 1;
     return ((stage.order + stageProgress) / total).clamp(0.0, 1.0);
   }
 

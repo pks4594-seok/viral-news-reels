@@ -185,10 +185,10 @@ class AppState extends ChangeNotifier {
 
     // 단계별 진행 시뮬레이션 — 실제 렌더 파이프라인의 진행률 훅 지점
     for (final stage in [
-      ReelStage.script,
-      ReelStage.voice,
-      ReelStage.visual,
-      ReelStage.render,
+      ReelBuildStage.script,
+      ReelBuildStage.voice,
+      ReelBuildStage.visual,
+      ReelBuildStage.render,
     ]) {
       for (var p = 0.0; p < 1.0; p += 0.25) {
         await Future<void>.delayed(const Duration(milliseconds: 130));
@@ -203,7 +203,7 @@ class AppState extends ChangeNotifier {
 
     final idx = _reels.indexWhere((r) => r.id == current.id);
     if (idx >= 0) {
-      current = current.copyWith(stage: ReelStage.ready, stageProgress: 1.0);
+      current = current.copyWith(stage: ReelBuildStage.ready, stageProgress: 1.0);
       _reels[idx] = current;
     }
 

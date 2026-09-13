@@ -70,7 +70,31 @@ ZDNet Korea, 한겨레, 머니투데이, 경향신문
 **자동 매칭** — 스포츠·연예 → 감탄형, 경제+수치 → 숫자형,
 30분 내 속보 → 즉시성 우선 오버라이드
 
-### 4. 릴스 생성 (`services/reel_generator_service.dart`)
+### 4. 릴스 재생 (`services/reel_player_controller.dart`)
+
+`Ticker`로 프레임마다 경과 시간을 누적해 절대 시각 기반 타임라인을
+구동합니다. 릴스 길이가 20~45초이고 씬·자막이 각자 다른 구간을
+점유하므로, AnimationController보다 절대 시각 제어가 정확합니다.
+
+- **켄번스 모션** — 줌 인/아웃, 좌우 팬, 상하 슬라이드, 대각 이동,
+  고정(미세 호흡) 6종을 `easeInOutSine`으로 보간
+- **씬 크로스페이드** — 전환 직전 0.35초 구간에서 다음 씬을 겹침
+- **자막 동기화** — 타임코드 기준 현재 자막 추출, 0.28초 페이드·슬라이드 인
+- **공식별 자막 배치** — 감탄형은 중앙 네온 글로우, 결론형은 상단 요약,
+  속보형은 하단 박스
+- **탐색** — 진행률/초/씬/자막 단위 seek, 반복 재생 토글
+- **방어 로직** — 탭 전환 복귀 시 과도한 델타(>200ms)를 무시해 점프 방지
+
+**플레이어 UI** (`widgets/reel_player.dart`, `widgets/reel_stage.dart`)
+
+- 인라인 플레이어 — 탭 재생/일시정지, 드래그 탐색, 씬 이동 버튼
+- 전장 몰입 재생 (`screens/reel_playback_screen.dart`) —
+  세로 스와이프로 릴스 전환, 좌우 25% 탭으로 씬 이동,
+  길게 눌러 UI 숨기기
+- 자막 타임라인이 재생 위치를 실시간 추종하며 현재 자막을 강조,
+  항목 탭 시 해당 시점으로 탐색
+
+### 5. 릴스 생성 (`services/reel_generator_service.dart`)
 
 뉴스 1건을 5단계로 변환합니다.
 
@@ -98,7 +122,8 @@ lib/
 │   ├── rss_parser.dart         RSS/Atom/RDF 파서
 │   ├── news_feed_service.dart  수집 + 분류 + 트렌드 스코어
 │   ├── viral_learning_service.dart  패턴 학습 + 공식 도출
-│   └── reel_generator_service.dart  릴스 생성 파이프라인
+│   ├── reel_generator_service.dart  릴스 생성 파이프라인
+│   └── reel_player_controller.dart  재생 타임라인 컨트롤러
 ├── state/
 │   └── app_state.dart          Provider 전역 상태
 ├── screens/
@@ -107,10 +132,13 @@ lib/
 │   ├── trend_screen.dart
 │   ├── studio_screen.dart
 │   ├── reel_detail_screen.dart
+│   ├── reel_playback_screen.dart   전장 몰입 재생
 │   ├── upload_screen.dart
 │   └── profile_screen.dart
 ├── widgets/
 │   ├── common.dart             글래스 카드 · 네온 버튼 · 스파크라인 · 파형
+│   ├── reel_stage.dart         9:16 무대 (켄번스 + 자막 합성)
+│   ├── reel_player.dart         인라인 플레이어 + 컨트롤 바
 │   └── platform_picker.dart    플랫폼 선택 + 예약 시각
 └── theme/
     └── app_theme.dart          네온 다크 디자인 시스템
@@ -123,11 +151,15 @@ lib/
 ```bash
 flutter pub get
 
-# 웹 프리뷰
-flutter build web --release
+# 웹 프리뷰 — RSS 프록시를 먼저 띄웁니다
+# (브라우저 CORS 정책으로 외부 피드 직접 호출이 불가하므로 필요합니다)
+python3 tools/rss_proxy.py &
+
+flutter build web --release --dart-define=RSS_PROXY=http://localhost:5061
 python3 -m http.server 5060 --directory build/web --bind 0.0.0.0
 
 # 안드로이드
+# 안드로이드는 CORS 제약이 없어 프록시 없이 언론사 서버를 직접 호출합니다
 flutter build apk --release          # 직접 설치용
 flutter build appbundle --release    # Google Play 업로드용
 ```
@@ -152,6 +184,8 @@ storeFile=<keystore 경로>
 - 트렌드 스코어 산출 · 카테고리 자동 분류 · 키워드 추출
 - 바이럴 패턴 학습 및 공식 도출
 - 릴스 스크립트 · 자막 타임코드 · 씬 구성 · 플랫폼별 메타데이터 생성
+- **릴스 재생** — 켄번스 모션 + 타이밍 자막 + 씬 크로스페이드
+- **전장 몰입 재생** — 세로 스와이프 전환, 탭 제어
 - 업로드 큐 · 예약 발행 관리 · 플랫폼 계정 3단 상태 관리
 - 뉴스 원문 열기 (Android `Intent.ACTION_VIEW`)
 
@@ -161,7 +195,8 @@ storeFile=<keystore 경로>
 |---|---|
 | **YouTube 발행** | Google Cloud Console → YouTube Data API v3 → OAuth 2.0 클라이언트 ID |
 | **TikTok 발행** | TikTok for Developers → Content Posting API 권한 승인 |
-| **MP4 렌더링** | 씬·자막·TTS 합성 파이프라인 (FFmpeg 또는 서버 렌더) |
+| **MP4 파일 내보내기** | 현재는 앱 내 재생만 지원. 파일 출력은 프레임 캡처 + FFmpeg 합성 필요 |
+| **TTS 내레이션** | 음성 합성 API 연동 (현재는 자막만 표시) |
 
 계정 카드는 **① 미연동 → ② 인증 필요 → ③ 인증 완료** 3단으로 상태를
 구분하며, 자격증명이 없으면 발행을 시도하지 않고 사유를 안내합니다.

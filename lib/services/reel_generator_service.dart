@@ -72,7 +72,7 @@ class ReelGeneratorService {
       captions: captions,
       scenes: scenes,
       formulaName: formula.name,
-      stage: ReelStage.script,
+      stage: ReelBuildStage.script,
       stageProgress: 0.0,
       durationSec: formula.recommendedDuration,
       predictedViews: predicted,
