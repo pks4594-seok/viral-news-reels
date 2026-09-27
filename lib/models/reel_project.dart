@@ -1,3 +1,4 @@
+import 'image_asset.dart';
 import 'news_article.dart';
 
 /// 릴스 제작 단계
@@ -48,18 +49,26 @@ class CaptionLine {
 /// 영상 컷 (씬)
 class ReelScene {
   final int index;
-  final String imageUrl;
+
+  /// 이 씬에 사용할 이미지 — 출처와 라이선스 정보를 함께 보관합니다.
+  final ImageAsset image;
+
   final String motion; // 카메라 무브 (줌인/팬/슬라이드)
   final double durationSec;
   final String narration;
 
   const ReelScene({
     required this.index,
-    required this.imageUrl,
+    required this.image,
     required this.motion,
     required this.durationSec,
     required this.narration,
   });
+
+  String get imageUrl => image.url;
+
+  /// 이 씬을 외부 플랫폼에 발행해도 안전한지
+  bool get isPublishSafe => image.isPublishSafe;
 }
 
 /// 릴스 프로젝트 — 뉴스 → 영상 변환의 결과물
@@ -160,6 +169,17 @@ class ReelProject {
   }
 
   bool get isReady => stage == ReelBuildStage.ready;
+
+  /// 모든 씬이 발행 안전한지 — 하나라도 언론사 사진이면 false
+  bool get isPublishSafe => scenes.every((s) => s.isPublishSafe);
+
+  /// 언론사 사진을 포함한 씬 개수
+  int get pressPhotoCount =>
+      scenes.where((s) => !s.isPublishSafe).length;
+
+  /// 사용된 이미지 출처 종류
+  Set<ImageSourceKind> get imageKinds =>
+      scenes.map((s) => s.image.kind).toSet();
 
   /// 전체 진행률 (단계 + 단계 내 진행)
   double get overallProgress {

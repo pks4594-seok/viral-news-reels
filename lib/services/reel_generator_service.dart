@@ -1,9 +1,11 @@
 import 'dart:math';
 
+import '../models/image_asset.dart';
 import '../models/news_article.dart';
 import '../models/reel_project.dart';
 import '../models/upload_task.dart';
 import '../models/viral_pattern.dart';
+import 'safe_image_service.dart';
 import 'viral_learning_service.dart';
 
 /// 릴스 생성 엔진
@@ -22,6 +24,7 @@ class ReelGeneratorService {
 
   final Random _rng = Random();
   final _learning = ViralLearningService.instance;
+  final _images = SafeImageService.instance;
 
   static const List<String> _motions = [
     '줌 인',
@@ -48,7 +51,13 @@ class ReelGeneratorService {
   ];
 
   /// 릴스 생성 — 뉴스 1건 → ReelProject 1건
-  Future<ReelProject> generate(NewsArticle article) async {
+  ///
+  /// [policy]에 따라 씬 이미지를 결정합니다. 기본값은 저작권 안전
+  /// 모드로, 언론사 보도사진 대신 AI 생성 배경을 사용합니다.
+  Future<ReelProject> generate(
+    NewsArticle article, {
+    ImagePolicy policy = ImagePolicy.alwaysSafe,
+  }) async {
     final formula = _learning.bestFormulaFor(article);
 
     final keyword = article.keywords.isNotEmpty
@@ -57,7 +66,7 @@ class ReelGeneratorService {
 
     final hookTitle = _buildHookTitle(article, formula, keyword);
     final captions = _buildCaptions(article, formula);
-    final scenes = _buildScenes(article, formula, captions);
+    final scenes = _buildScenes(article, formula, captions, policy);
     final hashtags = _buildHashtags(article, formula);
     final description = _buildDescription(article, formula);
     final viralScore = _computeViralScore(article, formula);
@@ -214,19 +223,32 @@ class ReelGeneratorService {
   bool _containsNumber(String s) => RegExp(r'\d').hasMatch(s);
 
   /// 씬 구성 — 컷별 이미지 + 카메라 무브
+  /// 씬 구성 — 컷별 이미지 + 카메라 무브
+  ///
+  /// 이미지는 [SafeImageService]가 정책에 따라 공급합니다.
+  /// 기본 정책에서는 언론사 보도사진 대신 AI 생성 배경이 배정되어
+  /// 저작권 문제 없이 발행할 수 있습니다.
   List<ReelScene> _buildScenes(
     NewsArticle article,
     ViralFormula formula,
     List<CaptionLine> captions,
+    ImagePolicy policy,
   ) {
     final sceneCount = min(captions.length, formula.recommendedCuts);
+    final images = _images.buildSceneImages(
+      article,
+      sceneCount,
+      policy: policy,
+    );
+
     return List.generate(sceneCount, (i) {
       final cap = captions[i];
       return ReelScene(
         index: i,
-        imageUrl: NewsFeedImages.forCategory(article.category, i),
+        image: images[i],
         motion: i == 0 ? '줌 인' : _motions[(i * 3 + 1) % _motions.length],
-        durationSec: double.parse((cap.endSec - cap.startSec).toStringAsFixed(1)),
+        durationSec:
+            double.parse((cap.endSec - cap.startSec).toStringAsFixed(1)),
         narration: cap.text,
       );
     });
@@ -342,45 +364,5 @@ class ReelGeneratorService {
         b.writeln(reel.hashtagLine);
         return b.toString();
     }
-  }
-}
-
-/// 카테고리별 이미지 매핑 (씬 구성용)
-class NewsFeedImages {
-  NewsFeedImages._();
-
-  static const Map<String, List<String>> _pool = {
-    '정치': [
-      'https://sspark.genspark.ai/i/Lho5UPf3cgxVvUvX?width=900',
-      'https://sspark.genspark.ai/i/sBiYHUp3BD5Tvdzw?width=900',
-    ],
-    '경제': [
-      'https://sspark.genspark.ai/i/oRCvBBM8MsCmndnu?width=900',
-      'https://sspark.genspark.ai/i/UxeyLCMmigbSy29P?width=900',
-      'https://sspark.genspark.ai/i/LyiGDQeXBFw6Ed3Y?width=900',
-    ],
-    'IT/테크': [
-      'https://sspark.genspark.ai/i/v86pDzLdoZCIj3sY?width=900',
-      'https://sspark.genspark.ai/i/AEvzu5HPIQNfyFZi?width=900',
-      'https://sspark.genspark.ai/i/7sf2iFlrrNQLNoNn?width=900',
-    ],
-    '스포츠': [
-      'https://sspark.genspark.ai/i/2Qa4EViC3wUOgo15?width=900',
-      'https://sspark.genspark.ai/i/Mnl6aRsaQaZG8N32?width=900',
-    ],
-    '연예': [
-      'https://sspark.genspark.ai/i/ATGoaitlTtMZxQrk?width=900',
-      'https://sspark.genspark.ai/i/NVQVcSGHC154W6HM?width=900',
-    ],
-    '사회': [
-      'https://sspark.genspark.ai/i/x3Hr3HSzaasJqnxN?width=900',
-      'https://sspark.genspark.ai/i/H9sLZfGUfGl37AQy?width=900',
-      'https://sspark.genspark.ai/i/eFNhL13HOVFxvA5N?width=900',
-    ],
-  };
-
-  static String forCategory(String category, int index) {
-    final list = _pool[category] ?? _pool['사회']!;
-    return list[index % list.length];
   }
 }

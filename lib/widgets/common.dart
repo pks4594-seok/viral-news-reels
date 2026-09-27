@@ -456,7 +456,10 @@ class ScoreRing extends StatelessWidget {
   }
 }
 
-/// 네트워크 이미지 (로딩/에러 처리 포함)
+/// 이미지 위젯 — 네트워크 URL과 로컬 에셋을 모두 처리합니다.
+///
+/// `assets/`로 시작하면 번들 에셋으로, 그 외에는 네트워크로 불러옵니다.
+/// AI 생성 배경은 앱에 내장되어 있어 오프라인에서도 즉시 표시됩니다.
 class NetImage extends StatelessWidget {
   final String url;
   final double? width;
@@ -473,32 +476,49 @@ class NetImage extends StatelessWidget {
     this.radius = 0,
   });
 
+  bool get _isAsset => url.startsWith('assets/');
+
   @override
   Widget build(BuildContext context) {
-    final img = Image.network(
-      url,
-      width: width,
-      height: height,
-      fit: fit,
-      loadingBuilder: (ctx, child, prog) {
-        if (prog == null) return child;
-        return Container(
-          width: width,
-          height: height,
-          color: AppColors.surfaceHigh,
-          child: const Center(
-            child: SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: AppColors.neonCyan,
-              ),
-            ),
-          ),
-        );
-      },
-      errorBuilder: (ctx, err, st) => Container(
+    final Widget img = _isAsset
+        ? Image.asset(
+            url,
+            width: width,
+            height: height,
+            fit: fit,
+            errorBuilder: (ctx, err, st) => _fallback(),
+          )
+        : Image.network(
+            url,
+            width: width,
+            height: height,
+            fit: fit,
+            loadingBuilder: (ctx, child, prog) {
+              if (prog == null) return child;
+              return Container(
+                width: width,
+                height: height,
+                color: AppColors.surfaceHigh,
+                child: const Center(
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppColors.neonCyan,
+                    ),
+                  ),
+                ),
+              );
+            },
+            errorBuilder: (ctx, err, st) => _fallback(),
+          );
+
+    if (radius <= 0) return img;
+    return ClipRRect(borderRadius: BorderRadius.circular(radius), child: img);
+  }
+
+  Widget _fallback() => Container(
         width: width,
         height: height,
         decoration: const BoxDecoration(gradient: AppColors.purpleGradient),
@@ -506,12 +526,7 @@ class NetImage extends StatelessWidget {
           child: Icon(Icons.newspaper_rounded,
               color: Colors.white38, size: 28),
         ),
-      ),
-    );
-
-    if (radius <= 0) return img;
-    return ClipRRect(borderRadius: BorderRadius.circular(radius), child: img);
-  }
+      );
 }
 
 /// 섹션 헤더

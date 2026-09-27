@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../models/image_asset.dart';
 import '../models/news_article.dart';
 import '../models/upload_task.dart';
+import '../services/safe_image_service.dart';
 import '../state/app_state.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common.dart';
@@ -66,6 +68,161 @@ class ProfileScreen extends StatelessWidget {
                 '아래 표시되는 모든 수치는 이 앱을 통해 실제 발행한 결과만 집계됩니다.',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 22),
+
+        // ── 이미지 저작권 정책 ───────────────────────
+        const SectionHeader(
+          title: '이미지 저작권 정책',
+          subtitle: '발행 영상에 어떤 이미지를 쓸지 결정합니다',
+          icon: Icons.copyright_rounded,
+          accent: AppColors.neonLime,
+        ),
+        const SizedBox(height: 12),
+        GlassCard(
+          padding: const EdgeInsets.all(13),
+          glowColor: state.imagePolicy == ImagePolicy.allowPress
+              ? AppColors.neonAmber
+              : AppColors.neonLime,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    state.imagePolicy == ImagePolicy.allowPress
+                        ? Icons.warning_amber_rounded
+                        : Icons.verified_user_rounded,
+                    size: 15,
+                    color: state.imagePolicy == ImagePolicy.allowPress
+                        ? AppColors.neonAmber
+                        : AppColors.neonLime,
+                  ),
+                  const SizedBox(width: 7),
+                  Expanded(
+                    child: Text(
+                      '언론사 보도사진은 해당 언론사가 저작권을 가집니다. '
+                      '영상으로 만들어 외부 플랫폼에 올리면 복제권과 '
+                      '공중송신권 침해가 될 수 있습니다.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              ...ImagePolicy.values.map((p) {
+                final on = state.imagePolicy == p;
+                final risky = p == ImagePolicy.allowPress;
+                final c = risky ? AppColors.neonAmber : AppColors.neonLime;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: InkWell(
+                    onTap: () => state.setImagePolicy(p),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 11),
+                      decoration: BoxDecoration(
+                        color: on
+                            ? c.withValues(alpha: 0.10)
+                            : AppColors.surface,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: on
+                              ? c.withValues(alpha: 0.5)
+                              : AppColors.border,
+                        ),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            on
+                                ? Icons.radio_button_checked_rounded
+                                : Icons.radio_button_unchecked_rounded,
+                            size: 17,
+                            color: on ? c : AppColors.textLow,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment:
+                                  CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Text(
+                                      p.label,
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w800,
+                                        color: on
+                                            ? AppColors.textHigh
+                                            : AppColors.textMid,
+                                      ),
+                                    ),
+                                    if (p == ImagePolicy.alwaysSafe) ...[
+                                      const SizedBox(width: 6),
+                                      const NeonBadge(
+                                        label: '권장',
+                                        color: AppColors.neonLime,
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  p.description,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodySmall,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }),
+              const Divider(height: 18),
+              Row(
+                children: [
+                  const Icon(Icons.auto_awesome_rounded,
+                      size: 13, color: AppColors.neonMagenta),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'AI 배경 ${SafeImageService.instance.libraryCount}종 보유 · '
+                      '기사 키워드에 맞춰 자동 선택됩니다',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                ],
+              ),
+              if (state.reels.isNotEmpty) ...[
+                const SizedBox(height: 9),
+                Row(
+                  children: [
+                    NeonBadge(
+                      label: '안전 ${state.safeReelCount}',
+                      color: AppColors.neonLime,
+                      icon: Icons.check_rounded,
+                    ),
+                    if (state.unsafeReelCount > 0) ...[
+                      const SizedBox(width: 6),
+                      NeonBadge(
+                        label: '확인 필요 ${state.unsafeReelCount}',
+                        color: AppColors.neonAmber,
+                        icon: Icons.warning_amber_rounded,
+                      ),
+                    ],
+                  ],
+                ),
+              ],
             ],
           ),
         ),

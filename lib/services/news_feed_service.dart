@@ -2,6 +2,7 @@ import 'dart:math';
 
 import '../models/news_article.dart';
 import 'rss_parser.dart';
+import 'safe_image_service.dart';
 
 /// 뉴스 수집 서비스
 ///
@@ -89,40 +90,14 @@ class NewsFeedService {
     ),
   ];
 
-  /// 이미지가 없는 기사용 카테고리별 대체 이미지
-  static const Map<String, List<String>> _fallbackImages = {
-    '정치': [
-      'https://sspark.genspark.ai/i/Lho5UPf3cgxVvUvX?width=1200',
-      'https://sspark.genspark.ai/i/sBiYHUp3BD5Tvdzw?width=1200',
-    ],
-    '경제': [
-      'https://sspark.genspark.ai/i/oRCvBBM8MsCmndnu?width=1200',
-      'https://sspark.genspark.ai/i/UxeyLCMmigbSy29P?width=1200',
-      'https://sspark.genspark.ai/i/LyiGDQeXBFw6Ed3Y?width=1200',
-    ],
-    'IT/테크': [
-      'https://sspark.genspark.ai/i/v86pDzLdoZCIj3sY?width=1200',
-      'https://sspark.genspark.ai/i/AEvzu5HPIQNfyFZi?width=1200',
-      'https://sspark.genspark.ai/i/7sf2iFlrrNQLNoNn?width=1200',
-    ],
-    '스포츠': [
-      'https://sspark.genspark.ai/i/2Qa4EViC3wUOgo15?width=1200',
-      'https://sspark.genspark.ai/i/Mnl6aRsaQaZG8N32?width=1200',
-    ],
-    '연예': [
-      'https://sspark.genspark.ai/i/ATGoaitlTtMZxQrk?width=1200',
-      'https://sspark.genspark.ai/i/NVQVcSGHC154W6HM?width=1200',
-    ],
-    '사회': [
-      'https://sspark.genspark.ai/i/x3Hr3HSzaasJqnxN?width=1200',
-      'https://sspark.genspark.ai/i/H9sLZfGUfGl37AQy?width=1200',
-      'https://sspark.genspark.ai/i/eFNhL13HOVFxvA5N?width=1200',
-    ],
-  };
-
+  /// 이미지가 없는 기사용 대체 이미지
+  ///
+  /// 언론사가 사진을 제공하지 않은 기사에는 AI 생성 배경을 채웁니다.
+  /// 저작권 안전하며 9:16 세로 비율로 릴스에 바로 쓸 수 있습니다.
   static String imageFor(String category, int seed) {
-    final pool = _fallbackImages[category] ?? _fallbackImages['사회']!;
-    return pool[seed.abs() % pool.length];
+    return SafeImageService.instance
+        .pickForCategory(category, index: seed)
+        .url;
   }
 
   // ══════════════════════════════════════════════════════

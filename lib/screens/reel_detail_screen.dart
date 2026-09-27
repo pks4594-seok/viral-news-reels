@@ -88,6 +88,8 @@ class _ReelDetailScreenState extends State<ReelDetailScreen>
           ),
           const SizedBox(height: 14),
           _ScoreRow(reel: reel),
+          const SizedBox(height: 12),
+          _LicenseBanner(reel: reel),
           const SizedBox(height: 18),
           _MetaSection(reel: reel),
           const SizedBox(height: 18),
@@ -222,6 +224,67 @@ class _ScoreRow extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// 저작권 상태 배너
+///
+/// 이 릴스를 외부 플랫폼에 발행해도 안전한지 명시합니다.
+/// 언론사 보도사진이 섞여 있으면 경고를 띄웁니다.
+class _LicenseBanner extends StatelessWidget {
+  final ReelProject reel;
+  const _LicenseBanner({required this.reel});
+
+  @override
+  Widget build(BuildContext context) {
+    final safe = reel.isPublishSafe;
+    final color = safe ? AppColors.neonLime : AppColors.neonAmber;
+
+    return GlassCard(
+      padding: const EdgeInsets.all(12),
+      glowColor: color,
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              safe ? Icons.verified_user_rounded : Icons.warning_amber_rounded,
+              size: 15,
+              color: color,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  safe ? '발행 안전' : '저작권 확인 필요',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: color,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  safe
+                      ? 'AI 생성 배경 ${reel.scenes.length}컷 사용 — '
+                          '유튜브·틱톡·블로그에 그대로 발행할 수 있습니다.'
+                      : '언론사 보도사진 ${reel.pressPhotoCount}컷이 포함되어 '
+                          '있습니다. 발행 시 저작권 침해가 될 수 있습니다.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -563,7 +626,12 @@ class _SpecSection extends StatelessWidget {
                   AppColors.neonCyan),
               _row(context, Icons.content_cut_rounded, '컷 구성',
                   '${reel.scenes.length}컷', AppColors.neonMagenta),
-              _row(context, Icons.language_rounded, '원본 출처',
+              _row(context, Icons.image_rounded, '이미지 출처',
+                  reel.imageKinds.map((k) => k.label).join(', '),
+                  reel.isPublishSafe
+                      ? AppColors.neonLime
+                      : AppColors.neonAmber),
+              _row(context, Icons.language_rounded, '기사 출처',
                   '${reel.article.source} · ${reel.article.relativeTime}',
                   AppColors.textMid,
                   last: true),

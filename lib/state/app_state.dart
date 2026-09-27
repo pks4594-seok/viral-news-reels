@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../models/image_asset.dart';
 import '../models/news_article.dart';
 import '../models/reel_project.dart';
 import '../models/upload_task.dart';
@@ -82,6 +83,15 @@ class AppState extends ChangeNotifier {
   List<PlatformAccount> get accounts => _accounts;
 
   // ── 자동화 설정 ──────────────────────────────────────
+  /// 이미지 저작권 정책 — 기본은 항상 안전 모드
+  ImagePolicy _imagePolicy = ImagePolicy.alwaysSafe;
+  ImagePolicy get imagePolicy => _imagePolicy;
+
+  void setImagePolicy(ImagePolicy p) {
+    _imagePolicy = p;
+    notifyListeners();
+  }
+
   bool _autoCollect = true;
   bool _autoGenerate = false;
   bool _autoUpload = false;
@@ -178,7 +188,7 @@ class AppState extends ChangeNotifier {
     _generating[article.id] = 0.0;
     notifyListeners();
 
-    final reel = await _generator.generate(article);
+    final reel = await _generator.generate(article, policy: _imagePolicy);
     var current = reel;
     _reels.insert(0, current);
     notifyListeners();
@@ -566,6 +576,13 @@ class AppState extends ChangeNotifier {
   // ══════════════════════════════════════════════════════
   // 통계
   // ══════════════════════════════════════════════════════
+
+  /// 발행 안전한 릴스 개수
+  int get safeReelCount => _reels.where((r) => r.isPublishSafe).length;
+
+  /// 언론사 사진이 포함된 릴스 개수
+  int get unsafeReelCount =>
+      _reels.where((r) => !r.isPublishSafe).length;
 
   int get totalPublished =>
       _uploads.where((u) => u.status == UploadStatus.published).length;

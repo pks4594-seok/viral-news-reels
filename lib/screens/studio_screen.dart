@@ -392,21 +392,40 @@ class _ReelCard extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 5),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
-                  decoration: BoxDecoration(
-                    color: AppColors.neonPurple.withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(5),
-                  ),
-                  child: Text(
-                    reel.formulaName,
-                    style: const TextStyle(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.neonPurple,
+                Row(
+                  children: [
+                    Flexible(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2.5),
+                        decoration: BoxDecoration(
+                          color:
+                              AppColors.neonPurple.withValues(alpha: 0.14),
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                        child: Text(
+                          reel.formulaName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.neonPurple,
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
+                    const SizedBox(width: 4),
+                    Icon(
+                      reel.isPublishSafe
+                          ? Icons.verified_user_rounded
+                          : Icons.warning_amber_rounded,
+                      size: 12,
+                      color: reel.isPublishSafe
+                          ? AppColors.neonLime
+                          : AppColors.neonAmber,
+                    ),
+                  ],
                 ),
               ],
             ),
